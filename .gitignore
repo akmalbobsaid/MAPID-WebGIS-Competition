@@ -43,3 +43,4 @@ data/**/*.gpkg-shm
 # Local immutable canonical source data
 data/raw/transit/SurveiActivities.GeoJSON
 data/raw/culinary/MAKANAN DAN MINUMAN DI KOTA SURABAYA TAHUN 2025.geojson
+data/raw/network/Jaringan Jalan Surabaya.geojson

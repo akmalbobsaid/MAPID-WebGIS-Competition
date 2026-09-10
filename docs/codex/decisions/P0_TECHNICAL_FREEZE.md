@@ -21,7 +21,7 @@ without the canonical source datasets.
 | `study_area` | Central Surabaya Transit-Culinary Cluster: 9 P0 stops -> EPSG:32749 convex hull -> 1,000 m buffer (`study_area_p0`); routing-processing extent = `study_area_p0` + 300 m |
 | `primary_demo_stop` | `6a92c77152d86e03b51db962` — Halte Simpang Dukuh |
 | `analysis_version` | `p0-central-v1` |
-| `raw_data_location` | `data/raw/{transit,culinary,roads}/` |
+| `raw_data_location` | `data/raw/{transit,culinary,network}/` |
 | `interim_data_location` | `data/interim/` |
 | `processed_data_location` | `data/processed/` |
 
@@ -82,7 +82,7 @@ Canonical immutable future inputs are:
 | --- | --- | --- | --- |
 | Transit | `SurveiActivities.GeoJSON` | `_id` is `stop_id`; `title` is display-only; geometry is transit geometry. | `data/raw/transit/SurveiActivities.GeoJSON` |
 | Culinary | `MAKANAN DAN MINUMAN DI KOTA SURABAYA TAHUN 2025.geojson` | Do not invent price, rating, opening hours, or menu detail. | `data/raw/culinary/MAKANAN DAN MINUMAN DI KOTA SURABAYA TAHUN 2025.geojson` |
-| Road proxy | `Jaringan Jalan Surabaya.geojson` | OSM-road-derived filtered walking-network proxy, not a complete pedestrian network. | `data/raw/roads/Jaringan Jalan Surabaya.geojson` |
+| Road proxy | `Jaringan Jalan Surabaya.geojson` | OSM-road-derived filtered walking-network proxy, not a complete pedestrian network. | `data/raw/network/Jaringan Jalan Surabaya.geojson` |
 
 `HALTE DI KOTA SURABAYA TAHUN 2025.geojson` is excluded as the transit source;
 `Jaringan Jalan Surabaya.qmd` is not the road-network source; and team survey

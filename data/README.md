@@ -5,7 +5,7 @@ or overwrite a raw file in place. Canonical Phase-1 inputs are expected at:
 
 - `data/raw/transit/SurveiActivities.GeoJSON`
 - `data/raw/culinary/MAKANAN DAN MINUMAN DI KOTA SURABAYA TAHUN 2025.geojson`
-- `data/raw/roads/Jaringan Jalan Surabaya.geojson`
+- `data/raw/network/Jaringan Jalan Surabaya.geojson`
 
 `HALTE DI KOTA SURABAYA TAHUN 2025.geojson` is not the transit source of truth,
 and `Jaringan Jalan Surabaya.qmd` is not the routing-network source. Team survey
