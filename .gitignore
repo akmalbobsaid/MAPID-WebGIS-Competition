@@ -1,0 +1,41 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+apps/web/.env.local
+apps/web/.env.*.local
+
+# JavaScript / Next.js build artifacts
+node_modules/
+apps/web/node_modules/
+.next/
+apps/web/.next/
+out/
+apps/web/out/
+coverage/
+apps/web/coverage/
+*.tsbuildinfo
+
+# Python environments and caches
+.venv/
+.venv-spatial/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS, logs, and editor artifacts
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.temp
+
+# Data processing scratch artifacts only. Do not ignore whole data directories:
+# reviewable manifests, documentation, and small deterministic outputs may be tracked.
+data/**/.cache/
+data/**/*.partial
+data/**/*.bak
+data/**/*.gpkg-wal
+data/**/*.gpkg-shm
