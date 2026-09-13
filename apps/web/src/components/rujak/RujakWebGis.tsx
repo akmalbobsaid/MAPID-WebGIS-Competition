@@ -35,6 +35,7 @@ type State = {
   actionFitRevision: number;
   viewportRevision: number;
   retryVersion: number;
+  stopsRetryVersion: number;
 };
 
 export const AGUS_ACTION_TIMEOUT_MS = 15_000;
@@ -43,7 +44,7 @@ const idle = <T,>(): Resource<T> => ({ status: "idle", data: null, error: null }
 export const initialState: State = {
   stops: idle<StopSummary[]>(), selectedStopId: null, minutes: 5, categoryL2: null,
   stop: idle<StopDetail>(), isochrone: idle<Isochrone>(), discovery: idle<DiscoveryResponse>(),
-  unfiltered: null, selectedMerchantId: null, merchant: idle<MerchantDetailType>(), agus: idle<AgusResponse>(), pendingAgusAction: null, agusActionError: null, actionFitRevision: 0, viewportRevision: 0, retryVersion: 0,
+  unfiltered: null, selectedMerchantId: null, merchant: idle<MerchantDetailType>(), agus: idle<AgusResponse>(), pendingAgusAction: null, agusActionError: null, actionFitRevision: 0, viewportRevision: 0, retryVersion: 0, stopsRetryVersion: 0,
 };
 
 type Action =
@@ -63,6 +64,7 @@ type Action =
   | { type: "AGUS_ACTION_ERROR"; error: string }
   | { type: "AGUS_ACTION_TIMEOUT"; action: DiscoveryResultAction }
   | { type: "RETRY" }
+  | { type: "RETRY_STOPS" }
   | { type: "RESET" };
 
 export function reducer(state: State, action: Action): State {
@@ -93,6 +95,7 @@ export function reducer(state: State, action: Action): State {
       };
     }
     case "RETRY": return { ...state, viewportRevision: state.viewportRevision + 1, retryVersion: state.retryVersion + 1 };
+    case "RETRY_STOPS": return { ...state, stopsRetryVersion: state.stopsRetryVersion + 1 };
     case "RESET": return { ...initialState, stops: state.stops, viewportRevision: state.viewportRevision + 1 };
   }
 }
@@ -120,7 +123,7 @@ export default function RujakWebGis() {
       .then((stops) => dispatch({ type: "STOPS", resource: { status: "success", data: stops, error: null } }))
       .catch((error) => { if (!isAbort(error)) dispatch({ type: "STOPS", resource: { status: "error", data: null, error: message(error) } }); });
     return () => controller.abort();
-  }, []);
+  }, [state.stopsRetryVersion]);
 
   const { selectedStopId, minutes, categoryL2, retryVersion } = state;
 
@@ -209,7 +212,7 @@ export default function RujakWebGis() {
       </header>
       <div className="webgis-layout">
         <aside className="sidebar">
-          {state.stops.status === "error" ? <div className="panel state-error" role="alert"><p>{state.stops.error}</p><button type="button" onClick={() => window.location.reload()}>Muat ulang aplikasi</button></div> : null}
+          {state.stops.status === "error" ? <div className="panel state-error" role="alert"><p>{state.stops.error}</p><button type="button" onClick={() => dispatch({ type: "RETRY_STOPS" })}>Coba lagi</button></div> : null}
           <DiscoveryControls stops={stops} selectedStopId={state.selectedStopId} minutes={state.minutes} categoryL2={state.categoryL2} categories={categories} busy={busy} onStopChange={(stopId) => dispatch({ type: "SELECT_STOP", stopId })} onMinutesChange={(minutes) => dispatch({ type: "SET_MINUTES", minutes })} onCategoryChange={(category) => dispatch({ type: "SET_CATEGORY", category })} onReset={() => dispatch({ type: "RESET" })} />
           <AgusPanel selectedStopName={selectedStopName} minutes={state.minutes} status={state.agus.status} response={state.agus.data} error={state.agus.error} actionError={state.agusActionError} onSubmit={submitAgus} onApplyAction={applyAgusAction} />
           <DiscoveryResults status={state.discovery.status} results={merchants} selectedMerchantId={state.selectedMerchantId} error={state.discovery.error} onSelect={(merchantId) => dispatch({ type: "SELECT_MERCHANT", merchantId })} onRetry={retry} />

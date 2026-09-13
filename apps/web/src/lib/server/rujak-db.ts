@@ -22,6 +22,22 @@ let pool: Pool | undefined;
 let config: RuntimeConfig | undefined;
 let postgisVerification: Promise<void> | undefined;
 
+const CONNECTION_RETRY_DELAY_MS = 250;
+
+function isTransientConnectionError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  if (candidate.code === "ECONNRESET" || candidate.code === "ECONNREFUSED" || candidate.code === "ETIMEDOUT") {
+    return true;
+  }
+  return typeof candidate.message === "string"
+    && /(?:timeout exceeded when trying to connect|connection terminated due to connection timeout|connection terminated unexpectedly)/iu.test(candidate.message);
+}
+
+function waitForConnectionRetry(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, CONNECTION_RETRY_DELAY_MS));
+}
+
 function configuredIdentifier(value: string, name: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
     throw new Error(`${name} must be a PostgreSQL identifier.`);
@@ -77,18 +93,31 @@ async function verifyPostgisInstallation(): Promise<void> {
         if (result.rowCount !== 1 || result.rows[0].schema_name !== settings.postgisSchema) {
           throw new Error("Configured PostGIS schema does not match the installed extension.");
         }
+      })
+      // A transient pooler failure must not poison this process for every later request.
+      .catch((error: unknown) => {
+        postgisVerification = undefined;
+        throw error;
       });
   }
   await postgisVerification;
 }
 
 export async function query<Row extends QueryResultRow>(text: string, values: unknown[] = [], operation = "database query") {
-  try {
-    await verifyPostgisInstallation();
-    return await runtimePool().query<Row>(text, values);
-  } catch (cause) {
-    throw new DatabaseQueryError(operation, cause);
+  let lastError: unknown;
+  // Every current call site is a parameterized read. Retrying one failed
+  // connection acquisition is safe and avoids surfacing a brief pooler hiccup.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await verifyPostgisInstallation();
+      return await runtimePool().query<Row>(text, values);
+    } catch (cause) {
+      lastError = cause;
+      if (attempt === 1 || !isTransientConnectionError(cause)) break;
+      await waitForConnectionRetry();
+    }
   }
+  throw new DatabaseQueryError(operation, lastError);
 }
 
 export type StopSummary = {

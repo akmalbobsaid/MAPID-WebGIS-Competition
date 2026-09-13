@@ -58,4 +58,11 @@ describe("AGUS staged action lifecycle", () => {
     const committed = reducer(applied, { type: "AGUS_ACTION_COMMIT", action });
     expect(reducer(committed, { type: "AGUS_ACTION_TIMEOUT", action })).toBe(committed);
   });
+
+  it("retries the stop list without re-running an in-progress discovery", () => {
+    const current = { ...initialState, retryVersion: 3, stopsRetryVersion: 2 };
+    const retried = reducer(current, { type: "RETRY_STOPS" });
+    expect(retried.stopsRetryVersion).toBe(3);
+    expect(retried.retryVersion).toBe(3);
+  });
 });

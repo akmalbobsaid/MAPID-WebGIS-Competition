@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { CircleMarker, GeoJSON, MapContainer, Marker, Tooltip, useMap } from "react-leaflet";
 import { divIcon, type LatLngBoundsExpression, type Map as LeafletMap } from "leaflet";
 import { geoJsonPointToLeafletLatLng, geographicBoundsToLeafletLatLngBounds } from "@/lib/client/geojson-coordinates";
@@ -48,10 +48,19 @@ function DiscoveryFitController({ stops, selectedStopId, merchants, revision }: 
   return null;
 }
 
+type MaplibreMapEvent = "load" | "error";
+
+type ManagedMaplibreMap = {
+  resize: () => void;
+  isStyleLoaded?: () => boolean | void;
+  on?: (event: MaplibreMapEvent, listener: () => void) => void;
+  off?: (event: MaplibreMapEvent, listener: () => void) => void;
+};
+
 type ManagedLeafletLayer = {
   addTo: (map: LeafletMap) => unknown;
   remove: () => void;
-  getMaplibreMap?: () => { resize: () => void };
+  getMaplibreMap?: () => ManagedMaplibreMap;
 };
 
 function MapResizeController({ maplibreLayer }: { maplibreLayer: MutableRefObject<ManagedLeafletLayer | null> }) {
@@ -82,40 +91,63 @@ function MapResizeController({ maplibreLayer }: { maplibreLayer: MutableRefObjec
   return null;
 }
 
-function MapidVectorBasemap({ apiKey, onLayerChange }: { apiKey: string | undefined; onLayerChange: (layer: ManagedLeafletLayer | null) => void }) {
+function MapidVectorBasemap({ apiKey, onLayerChange, onStatusChange }: { apiKey: string | undefined; onLayerChange: (layer: ManagedLeafletLayer | null) => void; onStatusChange: (status: "unavailable" | "loading" | "ready" | "error") => void }) {
   const map = useMap();
 
   useEffect(() => {
-    if (!apiKey) return;
+    if (!apiKey) {
+      onStatusChange("unavailable");
+      return;
+    }
     let cancelled = false;
     let layer: ManagedLeafletLayer | null = null;
+    let maplibreMap: ManagedMaplibreMap | undefined;
+    const markReady = () => {
+      if (!cancelled) onStatusChange("ready");
+    };
+    const markError = () => {
+      if (!cancelled) onStatusChange("error");
+    };
+
+    onStatusChange("loading");
 
     void (async () => {
-      const { setWorkerUrl } = await import("maplibre-gl");
-      if (cancelled) return;
+      try {
+        const { setWorkerUrl } = await import("maplibre-gl");
+        if (cancelled) return;
 
-      setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
+        setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
-      const { maplibreGL } = await import("@maplibre/maplibre-gl-leaflet");
-      if (cancelled) return;
+        const { maplibreGL } = await import("@maplibre/maplibre-gl-leaflet");
+        if (cancelled) return;
 
-      layer = maplibreGL({
-        style: `https://basemap.mapid.io/styles/light/style.json?key=${apiKey}`,
-        interactive: false,
-        attributionControl: {
-          customAttribution: "MAPID Maps · OpenMapTiles · © OpenStreetMap contributors",
-        },
-      });
-      layer.addTo(map);
-      onLayerChange(layer);
+        const createdLayer = maplibreGL({
+          style: `https://basemap.mapid.io/styles/light/style.json?key=${apiKey}`,
+          interactive: false,
+          attributionControl: {
+            customAttribution: "MAPID Maps · OpenMapTiles · © OpenStreetMap contributors",
+          },
+        });
+        layer = createdLayer;
+        createdLayer.addTo(map);
+        onLayerChange(createdLayer);
+        maplibreMap = createdLayer.getMaplibreMap?.();
+        maplibreMap?.on?.("load", markReady);
+        maplibreMap?.on?.("error", markError);
+        if (maplibreMap?.isStyleLoaded?.() === true) markReady();
+      } catch {
+        markError();
+      }
     })();
 
     return () => {
       cancelled = true;
+      maplibreMap?.off?.("load", markReady);
+      maplibreMap?.off?.("error", markError);
       onLayerChange(null);
       layer?.remove();
     };
-  }, [apiKey, map, onLayerChange]);
+  }, [apiKey, map, onLayerChange, onStatusChange]);
 
   return null;
 }
@@ -147,6 +179,7 @@ export default function RujakMap({
 }: Props) {
   const mapidKey = process.env.NEXT_PUBLIC_MAPID_MAPS_API_KEY;
   const maplibreLayer = useRef<ManagedLeafletLayer | null>(null);
+  const [basemapStatus, setBasemapStatus] = useState<"unavailable" | "loading" | "ready" | "error">(mapidKey ? "loading" : "unavailable");
   const setMaplibreLayer = useCallback((layer: ManagedLeafletLayer | null) => {
     maplibreLayer.current = layer;
   }, []);
@@ -154,7 +187,7 @@ export default function RujakMap({
   return (
     <div className="map-frame" aria-label="Peta akses kuliner RUJAK">
       <MapContainer bounds={studyAreaBounds} boundsOptions={{ padding: [28, 28] }} className="rujak-map" zoomControl>
-        <MapidVectorBasemap apiKey={mapidKey} onLayerChange={setMaplibreLayer} />
+        <MapidVectorBasemap apiKey={mapidKey} onLayerChange={setMaplibreLayer} onStatusChange={setBasemapStatus} />
         <MapResizeController maplibreLayer={maplibreLayer} />
         {isochrone ? (
           <GeoJSON
@@ -190,6 +223,13 @@ export default function RujakMap({
         <div className="map-config-error" role="alert">
           <strong>MAPID Maps belum dapat dimuat.</strong>
           <span>Tambahkan konfigurasi MAPID yang disetujui untuk menampilkan basemap.</span>
+        </div>
+      ) : null}
+      {basemapStatus === "loading" ? <div className="map-status" aria-live="polite">Memuat basemap MAPID…</div> : null}
+      {basemapStatus === "error" ? (
+        <div className="map-config-error" role="alert">
+          <strong>Basemap MAPID gagal dimuat.</strong>
+          <span>Data halte dan hasil akses tetap dapat digunakan. Periksa konfigurasi domain/key MAPID atau koneksi, lalu muat ulang.</span>
         </div>
       ) : null}
     </div>

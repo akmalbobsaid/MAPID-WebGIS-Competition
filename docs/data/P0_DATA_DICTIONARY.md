@@ -52,10 +52,12 @@ Mapped fields: `NAMA` -> `merchant_name`, `TIPE_1` -> `category_l1`, `TIPE_2`
 
 ## `access_quality_p0_review.csv`
 
-This is a nine-row human-review seed, not an approved accessibility dataset.
-`description_raw` and source fields are evidence. `suggested_shelter`,
-`suggested_seating`, `suggested_pedestrian_condition`, `suggested_cleanliness`,
-and `suggested_traffic_condition` are optional suggestions and begin blank.
-The matching `approved_*`, `reviewed_by`, `reviewed_at`, and `review_notes`
-columns begin blank. `review_status` is always initially `pending`. Survey
-evidence concerns the stop/local surroundings, not the whole pedestrian corridor.
+This CSV originated as a nine-row human-review seed. In the current
+`p0-central-v1` release bundle, all nine rows have `review_status=approved` and
+the approved fields contain the reviewer-recorded local conditions. The seed
+and approval columns remain together to preserve the review provenance:
+`description_raw` and source fields are evidence; `suggested_*` fields retain
+the original optional suggestion layer; `approved_*`, `reviewed_by`,
+`reviewed_at`, and `review_notes` record the completed human review. Survey
+evidence concerns the stop/local surroundings, not the whole pedestrian corridor
+or every route to a merchant.
