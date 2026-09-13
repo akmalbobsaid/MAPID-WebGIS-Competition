@@ -7,6 +7,11 @@ export type ApiErrorCode =
   | "UNSUPPORTED_ISOCHRONE_DURATION"
   | "STOP_UNROUTABLE"
   | "ANALYSIS_DATA_UNAVAILABLE"
+  | "AGUS_VALIDATION_ERROR"
+  | "STOP_CONTEXT_REQUIRED"
+  | "STOP_ACCESS_REVIEW_UNAVAILABLE"
+  | "AGUS_PROVIDER_UNAVAILABLE"
+  | "AGUS_INTERPRETATION_UNAVAILABLE"
   | "INTERNAL_ERROR";
 
 export class ApiError extends Error {
@@ -23,6 +28,7 @@ export class ApiError extends Error {
 export type ApiRouteContext = {
   requestId: string;
   setResultCount: (count: number) => void;
+  setLogMetadata: (metadata: Record<string, string | number | null>) => void;
 };
 
 const stopIdPattern = /^[0-9a-f]{24}$/;
@@ -65,6 +71,7 @@ export async function withApiRoute(
   const requestId = requestIdFrom(request);
   const startedAt = performance.now();
   let resultCount: number | undefined;
+  let logMetadata: Record<string, string | number | null> = {};
 
   try {
     const body = await handler({
@@ -72,11 +79,16 @@ export async function withApiRoute(
       setResultCount: (count) => {
         resultCount = count;
       },
+      setLogMetadata: (fields) => {
+        const allowed = new Set(["intent", "stopId", "minutes", "category", "providerErrorCategory", "validationFailureCategory"]);
+        logMetadata = Object.fromEntries(Object.entries(fields).filter(([key]) => allowed.has(key)));
+      },
     });
     logRequest({
       requestId,
       endpoint,
       ...metadata,
+      ...logMetadata,
       analysisVersion: process.env.RUJAK_ANALYSIS_VERSION ?? null,
       resultCount,
       latencyMs: Math.round(performance.now() - startedAt),
@@ -88,6 +100,7 @@ export async function withApiRoute(
       requestId,
       endpoint,
       ...metadata,
+      ...logMetadata,
       analysisVersion: process.env.RUJAK_ANALYSIS_VERSION ?? null,
       errorCategory: publicError.code,
       ...developmentDiagnostic(error),

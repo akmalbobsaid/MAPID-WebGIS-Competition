@@ -17,6 +17,7 @@
     "test:api": "vitest run tests/api"
   },
   "dependencies": {
+    "@google/genai": "2.22.0",
     "@maplibre/maplibre-gl-leaflet": "0.1.4",
     "csv-parse": "7.0.2",
     "leaflet": "1.9.4",

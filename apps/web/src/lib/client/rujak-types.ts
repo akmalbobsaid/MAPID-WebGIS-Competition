@@ -69,3 +69,33 @@ export type DiscoveryResponse = {
   results: MerchantResult[];
   analysis_version: string;
 };
+
+export type AgusIntent = "reachable_food" | "nearest_food" | "filter_food_category" | "stop_access_info";
+
+export type DiscoveryResultAction = {
+  type: "discovery_result";
+  stop_id: string;
+  minutes: 5 | 10;
+  category_l2: string | null;
+  merchant_ids: string[];
+  highlight_merchant_id: string | null;
+  show_isochrone: true;
+  fit_bounds: true;
+};
+
+export type AgusResponse = {
+  status: "ok" | "limitation";
+  assistant_text: string;
+  intent: AgusIntent | "unsupported" | "unrelated" | null;
+  reason: string | null;
+  result: {
+    stop_id?: string;
+    minutes?: 5 | 10;
+    category_l2?: string | null;
+    merchant_ids?: string[];
+    result_count?: number;
+    analysis_version?: string;
+    review_status?: "approved";
+  } | null;
+  map_action: DiscoveryResultAction | null;
+};

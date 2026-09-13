@@ -299,3 +299,12 @@ export async function discoverMerchants(stopId: string, maxWalkTime: 5 | 10, cat
      ORDER BY access.walking_time_seconds ASC, merchant.merchant_id ASC`, values, "discover merchants");
   return parseDiscoveryRows(result.rows);
 }
+
+export async function listCategoryL2(): Promise<string[]> {
+  const result = await query<{ category_l2: string }>(`
+    SELECT DISTINCT TRIM(category_l2) AS category_l2
+      FROM rujak.culinary_poi
+     WHERE category_l2 IS NOT NULL AND TRIM(category_l2) <> ''
+     ORDER BY category_l2 ASC`, [], "list canonical category_l2 values");
+  return result.rows.map((row) => row.category_l2);
+}

@@ -34,6 +34,20 @@ function ViewportController({ focus, revision }: { focus?: Position; revision: n
   return null;
 }
 
+function DiscoveryFitController({ stops, selectedStopId, merchants, revision }: { stops: StopSummary[]; selectedStopId: string | null; merchants: MerchantResult[]; revision: number }) {
+  const map = useMap();
+  useEffect(() => {
+    if (revision === 0 || !selectedStopId) return;
+    const stop = stops.find((candidate) => candidate.stop_id === selectedStopId);
+    const positions = [
+      ...(stop ? [mapPosition(stop.geometry.coordinates)] : []),
+      ...merchants.map((merchant) => mapPosition(merchant.geometry.coordinates)),
+    ];
+    if (positions.length > 1) map.fitBounds(positions, { padding: [36, 36], maxZoom: 16 });
+  }, [map, merchants, revision, selectedStopId, stops]);
+  return null;
+}
+
 type ManagedLeafletLayer = {
   addTo: (map: LeafletMap) => unknown;
   remove: () => void;
@@ -116,6 +130,7 @@ type Props = {
   onMerchantSelect: (merchantId: string) => void;
   focus: Position | undefined;
   viewportRevision: number;
+  fitResultsRevision: number;
 };
 
 export default function RujakMap({
@@ -128,6 +143,7 @@ export default function RujakMap({
   onMerchantSelect,
   focus,
   viewportRevision,
+  fitResultsRevision,
 }: Props) {
   const mapidKey = process.env.NEXT_PUBLIC_MAPID_MAPS_API_KEY;
   const maplibreLayer = useRef<ManagedLeafletLayer | null>(null);
@@ -168,6 +184,7 @@ export default function RujakMap({
           </CircleMarker>
         ))}
         <ViewportController focus={focus} revision={viewportRevision} />
+        <DiscoveryFitController stops={stops} selectedStopId={selectedStopId} merchants={merchants} revision={fitResultsRevision} />
       </MapContainer>
       {!mapidKey ? (
         <div className="map-config-error" role="alert">

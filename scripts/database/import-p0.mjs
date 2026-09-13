@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const ROOT = process.cwd();
 const requireFromWeb = createRequire(path.join(ROOT, "apps", "web", "package.json"));
@@ -13,6 +14,10 @@ const ANALYSIS_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const STOP_ID = /^[0-9a-f]{24}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ANALYTICAL_STATUS = new Set(["routable", "disconnected", "snap_too_far"]);
+const ACCESS_QUALITY_STATUS = new Set(["pending", "approved"]);
+const ACCESS_QUALITY_FIELDS = ["approved_shelter", "approved_seating", "approved_pedestrian_condition", "approved_cleanliness", "approved_traffic_condition"];
+const REVIEW_TEXT_MAX_LENGTH = 160;
+const REVIEWER_MAX_LENGTH = 120;
 
 function option(name) {
   const index = process.argv.indexOf(name);
@@ -50,6 +55,65 @@ function nullableString(value) {
   if (value === undefined || value === null) return null;
   const text = String(value).trim();
   return text === "" ? null : text;
+}
+
+function normalizedReviewText(value, field, maxLength = REVIEW_TEXT_MAX_LENGTH) {
+  const raw = nullableString(value);
+  if (raw !== null && /[\u0000-\u001F\u007F]/u.test(raw)) {
+    throw new Error(`${field} must be a bounded single-line review text value.`);
+  }
+  const normalized = raw?.normalize("NFKC").replace(/\s+/gu, " ").trim() ?? null;
+  if (normalized === null) return null;
+  if (normalized.length > maxLength) {
+    throw new Error(`${field} must be a bounded single-line review text value.`);
+  }
+  return normalized;
+}
+
+function approvedReviewTimestamp(value) {
+  const normalized = nullableString(value);
+  if (!normalized || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u.test(normalized)
+    || Number.isNaN(Date.parse(normalized))) {
+    throw new Error("approved access-quality rows require reviewed_at as an ISO-8601 timestamp with timezone.");
+  }
+  return normalized;
+}
+
+export function validateAccessQualityRow(row, stopIds, version, seenStopIds) {
+  if (!STOP_ID.test(row.stop_id) || seenStopIds.has(row.stop_id) || !stopIds.has(row.stop_id)) {
+    throw new Error("Access-quality review seed has an invalid or duplicate canonical stop_id.");
+  }
+  if (row.analysis_version !== version || !nullableString(row.description_raw)) {
+    throw new Error("Access-quality review seed has inconsistent analysis_version or missing raw evidence.");
+  }
+  if (!ACCESS_QUALITY_STATUS.has(row.review_status)) {
+    throw new Error("Access-quality review status must be pending or approved.");
+  }
+
+  const approved = Object.fromEntries(ACCESS_QUALITY_FIELDS.map((field) => [field, normalizedReviewText(row[field], field)]));
+  const reviewer = normalizedReviewText(row.reviewed_by, "reviewed_by", REVIEWER_MAX_LENGTH);
+  const reviewNotes = normalizedReviewText(row.review_notes, "review_notes");
+  const hasApprovedValues = Object.values(approved).some((value) => value !== null);
+
+  if (row.review_status === "pending") {
+    if (hasApprovedValues || reviewer !== null || nullableString(row.reviewed_at) !== null || reviewNotes !== null) {
+      throw new Error("Pending access-quality rows cannot contain approved values or reviewer metadata.");
+    }
+    return { ...row, ...approved, reviewed_by: null, reviewed_at: null, review_notes: null };
+  }
+
+  const reviewedAt = approvedReviewTimestamp(row.reviewed_at);
+  if (!reviewer) {
+    throw new Error("Approved access-quality rows require reviewed_by.");
+  }
+  seenStopIds.add(row.stop_id);
+  return { ...row, ...approved, reviewed_by: reviewer, reviewed_at: reviewedAt, review_notes: reviewNotes };
+}
+
+export function requireAllAccessQualityApproved(rows) {
+  if (rows.length !== 9 || rows.some((row) => row.review_status !== "approved" || !row.reviewed_by || !row.reviewed_at)) {
+    throw new Error("PHASE-07 PASS requires all nine access-quality records to be human-approved with reviewer metadata.");
+  }
 }
 
 function numberValue(value, field) {
@@ -191,15 +255,14 @@ async function loadInputs(version) {
   if (isochroneKeys.size !== stopIds.size * 2) throw new Error("P0 requires exactly 5/10 isochrones for every stop.");
 
   const reviewStopIds = new Set();
-  for (const row of accessQuality) {
-    if (!STOP_ID.test(row.stop_id) || reviewStopIds.has(row.stop_id) || !stopIds.has(row.stop_id) || row.review_status !== "pending") {
-      throw new Error("Access-quality review seed is invalid or not pending.");
-    }
+  const normalizedAccessQuality = accessQuality.map((row) => {
+    const normalized = validateAccessQualityRow(row, stopIds, version, reviewStopIds);
     reviewStopIds.add(row.stop_id);
-  }
+    return normalized;
+  });
   sameSet(reviewStopIds, stopIds, "Access-quality rows do not match canonical stops.");
 
-  return { transit, culinary, stopSnaps, merchantSnaps, access, isochrones, accessQuality, stopIds, merchantIds };
+  return { transit, culinary, stopSnaps, merchantSnaps, access, isochrones, accessQuality: normalizedAccessQuality, stopIds, merchantIds };
 }
 
 async function checkPostgis(client, postgisSchema) {
@@ -302,12 +365,33 @@ async function importAnalytical(client, postgis, inputs, version) {
 
 async function importAccessQuality(client, inputs) {
   for (const row of inputs.accessQuality) {
+    const approved = row.review_status === "approved";
     await client.query(`
       INSERT INTO rujak.access_quality AS target
         (stop_id, evidence_text, shelter, seating, pedestrian_condition, cleanliness, traffic_condition, review_status, reviewed_by, reviewed_at)
-      VALUES ($1, $2, NULL, NULL, NULL, NULL, NULL, 'pending', NULL, NULL)
-      ON CONFLICT (stop_id) DO UPDATE SET evidence_text = EXCLUDED.evidence_text
-      WHERE target.review_status = 'pending'`, [row.stop_id, nullableString(row.description_raw)]);
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (stop_id) DO UPDATE SET
+        evidence_text = EXCLUDED.evidence_text,
+        shelter = EXCLUDED.shelter,
+        seating = EXCLUDED.seating,
+        pedestrian_condition = EXCLUDED.pedestrian_condition,
+        cleanliness = EXCLUDED.cleanliness,
+        traffic_condition = EXCLUDED.traffic_condition,
+        review_status = EXCLUDED.review_status,
+        reviewed_by = EXCLUDED.reviewed_by,
+        reviewed_at = EXCLUDED.reviewed_at
+      WHERE target.review_status = 'pending' OR EXCLUDED.review_status = 'approved'`, [
+      row.stop_id,
+      nullableString(row.description_raw),
+      approved ? row.approved_shelter : null,
+      approved ? row.approved_seating : null,
+      approved ? row.approved_pedestrian_condition : null,
+      approved ? row.approved_cleanliness : null,
+      approved ? row.approved_traffic_condition : null,
+      row.review_status,
+      approved ? row.reviewed_by : null,
+      approved ? row.reviewed_at : null,
+    ]);
   }
 }
 
@@ -330,6 +414,9 @@ async function main() {
   const postgisSchema = option("--postgis-schema") ?? process.env.RUJAK_POSTGIS_SCHEMA;
   if (!ANALYSIS_VERSION.test(version)) throw new Error("analysis_version must be a non-empty safe version identifier.");
   const inputs = await loadInputs(version);
+  if (process.argv.includes("--require-all-approved")) {
+    requireAllAccessQualityApproved(inputs.accessQuality);
+  }
   if (process.argv.includes("--validate-only")) {
     console.log(JSON.stringify({
       analysis_version: version,
@@ -377,7 +464,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

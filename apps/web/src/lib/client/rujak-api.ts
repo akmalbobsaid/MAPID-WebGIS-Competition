@@ -1,4 +1,4 @@
-import type { DiscoveryResponse, Isochrone, MerchantDetail, StopDetail, StopSummary } from "@/lib/client/rujak-types";
+import type { AgusResponse, DiscoveryResponse, Isochrone, MerchantDetail, StopDetail, StopSummary } from "@/lib/client/rujak-types";
 
 export class RujakApiError extends Error {
   constructor(
@@ -54,4 +54,13 @@ export async function discover(stopId: string, minutes: 5 | 10, category: string
 export async function getMerchant(merchantId: string, signal?: AbortSignal): Promise<MerchantDetail> {
   const payload = await requestJson<{ merchant: MerchantDetail }>(`/api/merchants/${encodeURIComponent(merchantId)}`, { signal });
   return payload.merchant;
+}
+
+export async function askAgus(message: string, selectedStopId: string | null, selectedMinutes: 5 | 10, signal?: AbortSignal): Promise<AgusResponse> {
+  return requestJson<AgusResponse>("/api/agus", {
+    method: "POST",
+    signal,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message, context: { selected_stop_id: selectedStopId, selected_minutes: selectedStopId ? selectedMinutes : null } }),
+  });
 }
