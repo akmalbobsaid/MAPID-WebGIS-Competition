@@ -81,6 +81,10 @@ function assertDiscovery(actual, expected, threshold) {
       && near(row.walking_time_seconds, source.walking_time_seconds)
       && near(row.walking_time_min, source.walking_time_min),
     `Primary-stop ${threshold}-minute walking values differ for merchant ${row.merchant_id}.`);
+    assert(typeof row.geometry_text === "string"
+      && (/^(?:SRID=4326;)?POINT\(-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\)$/u.test(row.geometry_text)
+        || /^[0-9a-f]+$/iu.test(row.geometry_text)),
+    `Primary-stop ${threshold}-minute canonical Point geometry is unavailable for merchant ${row.merchant_id}.`);
   });
 }
 
@@ -200,7 +204,7 @@ async function verifyRuntime(client, analysisVersion, expectedDiscovery) {
   const discovery = async (threshold, expected) => {
     const result = await client.query(`/* phase05-import: runtime discovery ${threshold} */
       SELECT access.merchant_id::text AS merchant_id, access.total_distance_m AS walking_distance_m,
-             access.walking_time_seconds, access.walking_time_min
+             access.walking_time_seconds, access.walking_time_min, merchant.geometry::text AS geometry_text
         FROM rujak.stop_merchant_access AS access
         JOIN rujak.culinary_poi AS merchant ON merchant.merchant_id = access.merchant_id
        WHERE access.stop_id = $1 AND access.analysis_version = $2 AND access.reachable_${threshold}min IS TRUE

@@ -248,6 +248,18 @@ export type DiscoveryRow = {
   walking_time_min: number;
 };
 
+type DiscoveryQueryRow = Omit<DiscoveryRow, "geometry"> & { geometry_json: unknown };
+
+export function parseDiscoveryRows(rows: DiscoveryQueryRow[]): DiscoveryRow[] {
+  return rows.map(({ geometry_json, ...merchant }) => {
+    const geometry = parseGeometryText(geometry_json);
+    if (geometry.type !== "Point") {
+      throw new AnalyticalDataUnavailableError("Canonical merchant geometry must be a Point.");
+    }
+    return { ...merchant, geometry };
+  });
+}
+
 export async function assertCompleteAccess(stopId: string): Promise<void> {
   const settings = runtimeConfig();
   const result = await query<{ access_count: string; merchant_count: string }>(`
@@ -272,7 +284,7 @@ export async function discoverMerchants(stopId: string, maxWalkTime: 5 | 10, cat
     )`
     : "";
   const values = category ? [stopId, settings.analysisVersion, category] : [stopId, settings.analysisVersion];
-  const result = await query<DiscoveryRow & { geometry_json: unknown }>(`
+  const result = await query<DiscoveryQueryRow>(`
     SELECT merchant.merchant_id::text AS merchant_id, merchant.merchant_name,
            merchant.category_l1, merchant.category_l2, merchant.category_l3,
            merchant.address, merchant.geometry::text AS geometry_json,
@@ -285,11 +297,5 @@ export async function discoverMerchants(stopId: string, maxWalkTime: 5 | 10, cat
        AND access.${reachabilityColumn} IS TRUE
        ${categoryClause}
      ORDER BY access.walking_time_seconds ASC, merchant.merchant_id ASC`, values, "discover merchants");
-  return result.rows.map(({ geometry_json, ...merchant }) => {
-    const geometry = parseGeometryText(geometry_json);
-    if (geometry.type !== "Point") {
-      throw new AnalyticalDataUnavailableError("Canonical merchant geometry must be a Point.");
-    }
-    return { ...merchant, geometry };
-  });
+  return parseDiscoveryRows(result.rows);
 }

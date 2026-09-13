@@ -5,10 +5,10 @@ import { verifyPhase05Import } from "../../../../scripts/database/verify-phase05
 const version = "p0-central-v1";
 const tables = ["transit_points", "culinary_poi", "stop_snaps", "merchant_snaps", "stop_merchant_access", "stop_isochrones", "access_quality"];
 const expectedDiscovery = {
-  five: [{ merchant_id: "00000000-0000-4000-8000-000000000001", walking_distance_m: 130, walking_time_seconds: 100, walking_time_min: 100 / 60 }],
+  five: [{ merchant_id: "00000000-0000-4000-8000-000000000001", walking_distance_m: 130, walking_time_seconds: 100, walking_time_min: 100 / 60, geometry_text: "SRID=4326;POINT(112.74 -7.26)" }],
   ten: [
-    { merchant_id: "00000000-0000-4000-8000-000000000001", walking_distance_m: 130, walking_time_seconds: 100, walking_time_min: 100 / 60 },
-    { merchant_id: "00000000-0000-4000-8000-000000000002", walking_distance_m: 260, walking_time_seconds: 200, walking_time_min: 200 / 60 },
+    { merchant_id: "00000000-0000-4000-8000-000000000001", walking_distance_m: 130, walking_time_seconds: 100, walking_time_min: 100 / 60, geometry_text: "SRID=4326;POINT(112.74 -7.26)" },
+    { merchant_id: "00000000-0000-4000-8000-000000000002", walking_distance_m: 260, walking_time_seconds: 200, walking_time_min: 200 / 60, geometry_text: "SRID=4326;POINT(112.75 -7.25)" },
   ],
 };
 

@@ -10,6 +10,7 @@ node_modules/
 apps/web/node_modules/
 .next/
 apps/web/.next/
+apps/web/public/maplibre/
 out/
 apps/web/out/
 coverage/
